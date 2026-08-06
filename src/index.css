@@ -1,0 +1,123 @@
+/* PALETTE — locked, strictly two-tone.
+   Jet black and white, and nothing else. There is no accent colour anywhere in
+   this app, including charts. Everything separates itself using contrast,
+   weight, opacity and spacing.
+
+   Chart series follow the same ramp from JavaScript — see lib/chartTheme.js,
+   which also explains how series stay distinguishable without colour. */
+
+:root {
+  --black: #000000;
+  --surface: #0b0b0b;
+  --surface-2: #151517;
+  --line: rgba(255, 255, 255, 0.13);
+  --line-strong: rgba(255, 255, 255, 0.28);
+
+  --white: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.56);
+  --text-faint: rgba(255, 255, 255, 0.34);
+
+  /* The single ramp every piece of data uses, from quietest to loudest.
+     Heatmap cells, bar fills and series lines all draw from these. */
+  --data-1: rgba(255, 255, 255, 0.08);
+  --data-2: rgba(255, 255, 255, 0.2);
+  --data-3: rgba(255, 255, 255, 0.36);
+  --data-4: rgba(255, 255, 255, 0.58);
+  --data-5: rgba(255, 255, 255, 0.8);
+  --data-6: #ffffff;
+
+  --radius: 12px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--black);
+  color: var(--white);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  letter-spacing: -0.035em;
+  line-height: 1.03;
+  font-weight: 800;
+}
+
+/* Small uppercase labels are the workhorse of this design — they carry all the
+   secondary information without needing a colour to separate them. */
+.eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--white);
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 0.62rem 1.35rem;
+  letter-spacing: 0.02em;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-2);
+  border-color: var(--white);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.975);
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The time-period buttons carry a full label on wide screens and an
+   abbreviation on narrow ones, so the row never wraps badly on a phone. */
+.tw-short {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .tw-full {
+    display: none;
+  }
+  .tw-short {
+    display: inline;
+  }
+}
+
+/* The single filled control on any screen — inverted, so white becomes the
+   surface and black becomes the text. */
+button.primary {
+  background: var(--white);
+  color: var(--black);
+  border-color: var(--white);
+}
+
+button.primary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.86);
+}
