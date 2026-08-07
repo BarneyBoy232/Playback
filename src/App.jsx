@@ -37,15 +37,22 @@ export default function App() {
     setReady(false)
     setError(null)
     try {
-      // Coming back from Spotify's approval page. This has to run before
-      // anything else touches the database, because connecting wipes the demo
-      // data before real plays are written.
-      if (window.location.pathname === '/callback') {
+      // Coming back from Spotify's approval page. Spotify returns to the site's
+      // own front page with a code in the query string, so the check is for the
+      // code itself rather than for a particular path — which is what lets the
+      // same code work on a static host with no routing.
+      //
+      // This has to run before anything else touches the database, because
+      // connecting wipes the demo data before real plays are written.
+      const search = new URLSearchParams(window.location.search)
+      if (search.has('code') || search.has('error')) {
         setStatus('Finishing Spotify login')
-        await completeLogin(new URLSearchParams(window.location.search))
+        await completeLogin(search)
         await activateSpotify()
         await fullSync(await getApi(), setStatus)
-        window.history.replaceState({}, '', '/')
+        // Strip the code out of the address bar so a refresh cannot try to
+        // redeem it a second time.
+        window.history.replaceState({}, '', import.meta.env.BASE_URL)
       }
 
       const currentSource = await getDataSource()

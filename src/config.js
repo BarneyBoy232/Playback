@@ -13,9 +13,16 @@ export const SPOTIFY_CLIENT_ID =
   import.meta.env?.VITE_SPOTIFY_CLIENT_ID || '88f1eef784914d1d9580e3fdb5796dda'
 
 // Must match a Redirect URI registered in the Spotify dashboard exactly.
-// Spotify rejects "localhost" — the numeric loopback address is required.
+//
+// This is the site's own front page rather than a separate /callback path.
+// GitHub Pages serves static files and has no server to route unknown paths
+// with, so sending the login result back to the root avoids that problem
+// entirely — the app simply notices the code sitting in its own query string.
+//
+// BASE_URL is "/" in development and "/Playback/" in the built site, so the
+// same code produces the right address in both places.
 export function redirectUri() {
-  return `${window.location.origin}/callback`
+  return `${window.location.origin}${import.meta.env.BASE_URL}`
 }
 
 // Read-only access, and nothing more than the app actually reads.
