@@ -5,10 +5,19 @@
 
 import { tally, rank, localDayKey } from './leaderboards.js'
 
-/** Overall skipping, plus how much listening was shuffled, offline or deliberate. */
+/**
+ * Overall skipping, plus how much listening was shuffled, offline or deliberate.
+ *
+ * Only plays from the lifetime export can answer any of this — the live API
+ * reports none of it. Those live plays are marked `estimated` and left out of
+ * the rates entirely, so a partly-live dataset reports an honest figure over
+ * the plays it actually knows about instead of a diluted one over all of them.
+ */
 export function habits(plays) {
-  if (!plays.length) {
-    return { skipRate: 0, shuffleRate: 0, offlineRate: 0, completionRate: 0, plays: 0 }
+  const measured = plays.filter((p) => !p.estimated)
+
+  if (!measured.length) {
+    return { plays: plays.length, measuredPlays: 0, skipRate: null, shuffleRate: null, offlineRate: null, completionRate: null }
   }
 
   let skipped = 0
@@ -16,7 +25,7 @@ export function habits(plays) {
   let offline = 0
   let completed = 0
 
-  for (const play of plays) {
+  for (const play of measured) {
     if (play.skipped) skipped++
     if (play.shuffle) shuffled++
     if (play.offline) offline++
@@ -26,10 +35,11 @@ export function habits(plays) {
 
   return {
     plays: plays.length,
-    skipRate: skipped / plays.length,
-    shuffleRate: shuffled / plays.length,
-    offlineRate: offline / plays.length,
-    completionRate: completed / plays.length,
+    measuredPlays: measured.length,
+    skipRate: skipped / measured.length,
+    shuffleRate: shuffled / measured.length,
+    offlineRate: offline / measured.length,
+    completionRate: completed / measured.length,
   }
 }
 
@@ -41,8 +51,10 @@ export function habits(plays) {
  * a finding.
  */
 export function skipByArtist(plays, { minPlays = 20, limit = 25, mostSkipped = true } = {}) {
+  // Same reasoning as habits(): live-API plays know nothing about skipping and
+  // would only water the figures down.
   const map = tally(
-    plays,
+    plays.filter((p) => !p.estimated),
     (p) => p.artistName,
     (p) => ({ name: p.artistName }),
   )

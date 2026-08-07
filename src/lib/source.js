@@ -28,6 +28,21 @@ export const MOCK_VERSION = 2
 // Kept in memory so the mock catalogue is only generated once per page load.
 let mockBundle = null
 
+/**
+ * Announce a stage of work, then give the browser a moment to paint it.
+ *
+ * The pause is skipped when the tab is hidden, and that is not an optimisation
+ * — it is a correctness fix. Chrome suspends timers in background tabs, so a
+ * plain `setTimeout` yield can simply never fire, leaving the whole rebuild
+ * stalled forever on a tab the user has switched away from. There is nothing to
+ * paint in a hidden tab anyway, so the yield is pointless there.
+ */
+async function stage(onProgress, message) {
+  onProgress(message)
+  if (typeof document !== 'undefined' && document.hidden) return
+  await new Promise((resolve) => setTimeout(resolve, 0))
+}
+
 export async function getDataSource() {
   return getMeta(SOURCE_KEY, SOURCE_MOCK)
 }
@@ -54,14 +69,14 @@ export async function ensureMockData({ force = false, onProgress = () => {} } = 
     return { skipped: true, plays: existing, groundTruth: await getMeta('mockGroundTruth') }
   }
 
-  onProgress('Clearing existing data')
+  await stage(onProgress, 'Clearing existing data')
   await clearAll()
 
-  onProgress('Inventing a fake music world')
   const t0 = performance.now()
+  await stage(onProgress, 'Inventing a fake music world')
   const { entries, groundTruth, catalogue } = generateHistory({ seed: MOCK_SEED })
 
-  onProgress(`Parsing ${entries.length.toLocaleString()} streaming rows`)
+  await stage(onProgress, 'Parsing streaming rows')
   const { plays, stats } = parseExportEntries(entries, { source: 'export' })
 
   onProgress(`Storing ${plays.length.toLocaleString()} plays`)
@@ -114,4 +129,27 @@ export async function getApi() {
 /** The patterns deliberately planted in the demo data, for tests and the debug panel. */
 export async function getGroundTruth() {
   return getMeta('mockGroundTruth')
+}
+
+/**
+ * Switch from demo data to a real Spotify account.
+ *
+ * The demo history is wiped first. Leaving it in place would blend 68,000
+ * invented plays into a real listening record, and every number in the app
+ * would be fiction dressed up as fact.
+ *
+ * The freshly issued tokens are the one thing carried across the wipe.
+ */
+export async function activateSpotify() {
+  const tokens = await getMeta('spotifyTokens')
+  await clearAll()
+  if (tokens) await setMeta('spotifyTokens', tokens)
+  await setMeta(SOURCE_KEY, SOURCE_SPOTIFY)
+  mockBundle = null
+}
+
+/** Go back to demo data, discarding anything pulled from Spotify. */
+export async function returnToDemo({ onProgress = () => {} } = {}) {
+  mockBundle = null
+  return ensureMockData({ force: true, onProgress })
 }

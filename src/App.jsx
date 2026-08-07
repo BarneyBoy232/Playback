@@ -1,9 +1,12 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { ensureMockData, getApi, getGroundTruth } from './lib/source.js'
+import { ensureMockData, getApi, getGroundTruth, getDataSource, activateSpotify, SOURCE_MOCK } from './lib/source.js'
 import { getAllPlays, getPlayRange, getMeta } from './lib/db.js'
+import { completeLogin, isConnected } from './lib/spotify/auth.js'
+import { fullSync } from './lib/spotify/sync.js'
 import { resolveWindow, filterPlays, bucketPlays, DEFAULT_PRESET } from './lib/stats/window.js'
 import Wordmark from './components/Wordmark.jsx'
 import TimeWindowBar from './components/TimeWindowBar.jsx'
+import SpotifyPanel from './components/SpotifyPanel.jsx'
 
 // Guards against React's development-mode double-effect firing two generations
 // at once on first load.
@@ -17,7 +20,9 @@ export default function App() {
   const [plays, setPlays] = useState([])
   const [dataRange, setDataRange] = useState(null)
   const [truth, setTruth] = useState(null)
-  const [apiCheck, setApiCheck] = useState(null)
+  const [source, setSource] = useState(SOURCE_MOCK)
+  const [connected, setConnected] = useState(false)
+  const [profile, setProfile] = useState(null)
   const [preset, setPreset] = useState(DEFAULT_PRESET)
 
   const started = useRef(false)
@@ -32,22 +37,49 @@ export default function App() {
     setReady(false)
     setError(null)
     try {
-      if (!bootstrapPromise || force) {
-        bootstrapPromise = ensureMockData({ force, onProgress: setStatus })
+      // Coming back from Spotify's approval page. This has to run before
+      // anything else touches the database, because connecting wipes the demo
+      // data before real plays are written.
+      if (window.location.pathname === '/callback') {
+        setStatus('Finishing Spotify login')
+        await completeLogin(new URLSearchParams(window.location.search))
+        await activateSpotify()
+        await fullSync(await getApi(), setStatus)
+        window.history.replaceState({}, '', '/')
       }
-      await bootstrapPromise
+
+      const currentSource = await getDataSource()
+      if (currentSource === SOURCE_MOCK) {
+        if (!bootstrapPromise || force) {
+          bootstrapPromise = ensureMockData({ force, onProgress: setStatus })
+        }
+        await bootstrapPromise
+      }
 
       setStatus('Reading it back')
-      const [allPlays, range, groundTruth] = await Promise.all([getAllPlays(), getPlayRange(), getGroundTruth()])
-      setPlays(allPlays)
-      setDataRange(range)
-      setTruth(groundTruth)
-      setApiCheck(await runApiCheck())
+      await refresh(currentSource)
       setReady(true)
     } catch (err) {
       console.error(err)
       setError(err.message)
     }
+  }
+
+  async function refresh(knownSource = null) {
+    const currentSource = knownSource || (await getDataSource())
+    const [allPlays, range, groundTruth, linked, storedProfile] = await Promise.all([
+      getAllPlays(),
+      getPlayRange(),
+      getGroundTruth(),
+      isConnected(),
+      getMeta('spotifyProfile'),
+    ])
+    setPlays(allPlays)
+    setDataRange(range)
+    setTruth(groundTruth)
+    setSource(currentSource)
+    setConnected(linked)
+    setProfile(storedProfile)
   }
 
   // "Now" is pinned to the newest play rather than the real clock. With demo
@@ -76,7 +108,10 @@ export default function App() {
       <Shell>
         <Wordmark size="md" />
         <h1 style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)', marginTop: '3rem' }}>Something broke</h1>
-        <p style={{ color: 'var(--text-dim)', fontFamily: 'ui-monospace, monospace' }}>{error}</p>
+        <p style={{ color: 'var(--text-dim)', fontFamily: 'ui-monospace, monospace', maxWidth: '70ch' }}>{error}</p>
+        <button style={{ marginTop: '1.5rem' }} onClick={() => boot()}>
+          Try again
+        </button>
       </Shell>
     )
   }
@@ -100,17 +135,30 @@ export default function App() {
 
       <TimeWindowBar value={preset} onChange={setPreset} range={{ from: win.from, to: win.to }} />
 
-      <section style={{ marginTop: '2.5rem' }}>
-        <div className="eyebrow">{win.label}</div>
-        <h1 style={{ fontSize: 'clamp(2.4rem, 7vw, 5rem)', margin: '0.35rem 0 0' }}>
-          {formatDuration(view.msPlayed)}
-        </h1>
-        <div style={{ color: 'var(--text-dim)', marginTop: '0.6rem', fontSize: '1rem' }}>
-          {view.plays.toLocaleString()} plays · {view.tracks.toLocaleString()} tracks · {view.artists.toLocaleString()} artists
-          {view.change != null && <> · {formatChange(view.change)} on previous</>}
-        </div>
+      {view ? (
+        <section style={{ marginTop: '2.5rem' }}>
+          <div className="eyebrow">{win.label}</div>
+          <h1 style={{ fontSize: 'clamp(2.4rem, 7vw, 5rem)', margin: '0.35rem 0 0' }}>
+            {formatDuration(view.msPlayed)}
+          </h1>
+          <div style={{ color: 'var(--text-dim)', marginTop: '0.6rem', fontSize: '1rem' }}>
+            {view.plays.toLocaleString()} plays · {view.tracks.toLocaleString()} tracks ·{' '}
+            {view.artists.toLocaleString()} artists
+            {view.change != null && <> · {formatChange(view.change)} on previous</>}
+          </div>
+          <Sparkline series={view.series} label={win.label} />
+        </section>
+      ) : (
+        <section style={{ marginTop: '2.5rem' }}>
+          <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 3rem)' }}>Nothing to show yet</h1>
+          <p style={{ color: 'var(--text-dim)', maxWidth: '56ch', lineHeight: 1.55 }}>
+            Sync recent plays, or import a lifetime streaming history export, and this fills in.
+          </p>
+        </section>
+      )}
 
-        <Sparkline series={view.series} label={win.label} />
+      <section style={{ marginTop: '3rem' }}>
+        <SpotifyPanel connected={connected} profile={profile} source={source} onChanged={() => refresh()} />
       </section>
 
       <details style={details}>
@@ -119,31 +167,38 @@ export default function App() {
         <div style={{ padding: '0.25rem 0 1rem' }}>
           <div className="eyebrow" style={{ marginTop: '1.25rem' }}>Dataset</div>
           <div style={grid}>
+            <Stat label="Source" value={source === SOURCE_MOCK ? 'Demo data' : 'Spotify account'} />
             <Stat label="Plays stored" value={plays.length.toLocaleString()} />
-            <Stat label="Date range" value={`${fmtDate(dataRange.from)} → ${fmtDate(dataRange.to)}`} />
-            <Stat label="Unique tracks" value={truth.uniqueTracks.toLocaleString()} />
-            <Stat label="Unique artists" value={truth.uniqueArtists.toLocaleString()} />
+            <Stat
+              label="Date range"
+              value={dataRange ? `${fmtDate(dataRange.from)} → ${fmtDate(dataRange.to)}` : '—'}
+            />
+            <Stat label="Estimated plays" value={plays.filter((p) => p.estimated).length.toLocaleString()} />
           </div>
 
-          <div className="eyebrow" style={{ marginTop: '1.75rem' }}>Planted facts to rediscover</div>
-          <div style={grid}>
-            <Stat label="Most played song" value={`${truth.topTrack.name} · ${truth.topTrack.plays}`} />
-            <Stat label="Most played artist" value={`${truth.topArtistByPlays.name} · ${truth.topArtistByPlays.plays}`} />
-            <Stat label="Abandoned after year one" value={truth.abandonedArtists.slice(0, 3).join(', ')} />
-            <Stat label="Obsessions / seasons" value={`${truth.burstArtists.length} / ${truth.seasonalArtists.length}`} />
-          </div>
+          {truth && (
+            <>
+              <div className="eyebrow" style={{ marginTop: '1.75rem' }}>Planted facts to rediscover</div>
+              <div style={grid}>
+                <Stat label="Most played song" value={`${truth.topTrack.name} · ${truth.topTrack.plays}`} />
+                <Stat
+                  label="Most played artist"
+                  value={`${truth.topArtistByPlays.name} · ${truth.topArtistByPlays.plays}`}
+                />
+                <Stat label="Abandoned after year one" value={truth.abandonedArtists.slice(0, 3).join(', ')} />
+                <Stat
+                  label="Obsessions / seasons"
+                  value={`${truth.burstArtists.length} / ${truth.seasonalArtists.length}`}
+                />
+              </div>
+            </>
+          )}
 
-          <div className="eyebrow" style={{ marginTop: '1.75rem' }}>Mock API</div>
-          <div style={grid}>
-            <Stat label="Profile" value={apiCheck.profile} />
-            <Stat label="Top artist · 4 weeks" value={apiCheck.short} />
-            <Stat label="Top artist · 6 months" value={apiCheck.medium} />
-            <Stat label="Top artist · 1 year" value={apiCheck.long} />
-          </div>
-
-          <button style={{ marginTop: '1.5rem' }} onClick={() => boot(true)}>
-            Regenerate demo data
-          </button>
+          {source === SOURCE_MOCK && (
+            <button style={{ marginTop: '1.5rem' }} onClick={() => boot(true)}>
+              Regenerate demo data
+            </button>
+          )}
         </div>
       </details>
     </Shell>
@@ -178,9 +233,17 @@ function Sparkline({ series, label }) {
       preserveAspectRatio="none"
       style={{ width: '100%', height: 150, marginTop: '2rem', display: 'block' }}
       role="img"
-      aria-label={`Plays per ${series.length > 40 ? 'period' : 'bucket'} across ${label}`}
+      aria-label={`Plays over ${label}`}
     >
-      <line x1="0" y1={h - pad.bottom} x2={w} y2={h - pad.bottom} stroke="var(--line)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+      <line
+        x1="0"
+        y1={h - pad.bottom}
+        x2={w}
+        y2={h - pad.bottom}
+        stroke="var(--line)"
+        strokeWidth="1"
+        vectorEffect="non-scaling-stroke"
+      />
       <polyline
         points={points}
         fill="none"
@@ -239,7 +302,7 @@ const grid = {
 }
 
 const details = {
-  marginTop: '4rem',
+  marginTop: '3.5rem',
   borderTop: '1px solid var(--line)',
   paddingTop: '1rem',
 }
@@ -251,22 +314,6 @@ const summary = {
   letterSpacing: '0.18em',
   textTransform: 'uppercase',
   color: 'var(--text-faint)',
-}
-
-async function runApiCheck() {
-  const api = await getApi()
-  const [profile, short, medium, long] = await Promise.all([
-    api.getProfile(),
-    api.getTopArtists('short_term', 1),
-    api.getTopArtists('medium_term', 1),
-    api.getTopArtists('long_term', 1),
-  ])
-  return {
-    profile: profile.display_name,
-    short: short.items[0] ? short.items[0].name : '—',
-    medium: medium.items[0] ? medium.items[0].name : '—',
-    long: long.items[0] ? long.items[0].name : '—',
-  }
 }
 
 function fmtDate(ts) {

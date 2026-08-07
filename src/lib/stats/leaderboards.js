@@ -132,6 +132,7 @@ export function totals(plays) {
   const days = new Set()
   let msPlayed = 0
   let skipped = 0
+  let measured = 0
 
   for (const play of plays) {
     tracks.add(play.trackUri)
@@ -139,7 +140,13 @@ export function totals(plays) {
     albums.add(`${play.artistName}::${play.albumName}`)
     days.add(localDayKey(play.ts))
     msPlayed += play.msPlayed
-    if (play.skipped) skipped++
+    // Plays recovered from the live API carry no skip information, so they are
+    // excluded from the skip rate rather than silently counted as "not skipped",
+    // which would drag the figure towards zero.
+    if (!play.estimated) {
+      measured++
+      if (play.skipped) skipped++
+    }
   }
 
   return {
@@ -150,7 +157,8 @@ export function totals(plays) {
     albums: albums.size,
     activeDays: days.size,
     skipped,
-    skipRate: skipped / plays.length,
+    measuredPlays: measured,
+    skipRate: measured ? skipped / measured : 0,
     // Deliberately per ACTIVE day rather than per calendar day: on the days he
     // actually listened, this is how much he listened.
     playsPerActiveDay: plays.length / days.size,
