@@ -3,7 +3,10 @@ import { resolveWindow, filterPlays, bucketPlays, chooseBucket } from './window.
 
 const DAY = 86400000
 // A fixed "now" so every expectation below can be worked out by hand.
-const NOW = Date.UTC(2026, 7, 6) // 6 August 2026, midnight UTC
+// Local midnight, not UTC midnight — bucketing works on the listener's clock,
+// so anchoring the test to UTC would make the day counts off by one in any
+// timezone that is not UTC.
+const NOW = new Date(2026, 7, 6).getTime() // 6 August 2026, local midnight
 
 function play(ts, msPlayed = 180000) {
   return { key: `${ts}|x`, ts, msPlayed, trackUri: 'x', artistName: 'A' }
@@ -23,9 +26,9 @@ describe('resolveWindow', () => {
     expect(w.previous.to - w.previous.from).toBe(w.to - w.from)
   })
 
-  it('starts this year on 1 January', () => {
+  it('starts this year on local 1 January', () => {
     const w = resolveWindow('year', { now: NOW })
-    expect(w.from).toBe(Date.UTC(2026, 0, 1))
+    expect(w.from).toBe(new Date(2026, 0, 1).getTime())
   })
 
   it('covers the whole dataset for all time, and offers no comparison', () => {
@@ -94,17 +97,26 @@ describe('bucketPlays', () => {
     expect(busiest.plays).toBe(2)
   })
 
-  it('starts weekly buckets on a Monday', () => {
+  it('starts weekly buckets on a local Monday', () => {
     const buckets = bucketPlays([], NOW - 21 * DAY, NOW, 'week')
     for (const b of buckets) {
-      expect(new Date(b.ts).getUTCDay()).toBe(1)
+      expect(new Date(b.ts).getDay()).toBe(1)
     }
   })
 
-  it('starts monthly buckets on the first of the month', () => {
-    const buckets = bucketPlays([], Date.UTC(2026, 0, 15), Date.UTC(2026, 4, 2), 'month')
+  it('starts monthly buckets on the first of the local month', () => {
+    const buckets = bucketPlays([], new Date(2026, 0, 15).getTime(), new Date(2026, 4, 2).getTime(), 'month')
     for (const b of buckets) {
-      expect(new Date(b.ts).getUTCDate()).toBe(1)
+      expect(new Date(b.ts).getDate()).toBe(1)
     }
+  })
+
+  it('files a play under the local day it happened on, not the UTC day', () => {
+    // 8am local on a fixed day — in any timezone ahead of UTC this instant
+    // belongs to the previous UTC day, which is exactly the trap.
+    const morning = new Date(2026, 6, 15, 8, 0, 0).getTime()
+    const buckets = bucketPlays([play(morning)], new Date(2026, 6, 14).getTime(), new Date(2026, 6, 17).getTime(), 'day')
+    const filled = buckets.find((b) => b.plays > 0)
+    expect(new Date(filled.ts).getDate()).toBe(15)
   })
 })

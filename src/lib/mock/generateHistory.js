@@ -58,9 +58,22 @@ export function generateHistory({
   const catalogue = buildCatalogue({ seed: seed + 1, artistCount })
   const { artists } = catalogue
 
-  const end = Date.parse(`${endDate}T00:00:00Z`)
+  // Dates are built on the LOCAL clock, then written out as UTC by
+  // toISOString() further down — which is exactly what a real export contains.
+  // Getting this wrong is subtle and ruins everything downstream: if the
+  // generator treats "8am" as 8am UTC, then in Australia the listening peak
+  // lands at 6pm and every habits chart is quietly shifted by the timezone
+  // offset.
+  const [endY, endM, endD] = endDate.split('-').map(Number)
+  const endLocal = new Date(endY, endM - 1, endD)
   const totalDays = Math.round(years * 365)
-  const start = end - totalDays * DAY_MS
+
+  /** Local midnight, `offset` days after the start of the timeline. */
+  const dayAt = (offset) =>
+    new Date(endLocal.getFullYear(), endLocal.getMonth(), endLocal.getDate() - totalDays + offset).getTime()
+
+  const start = dayAt(0)
+  const end = endLocal.getTime()
 
   // ---------------------------------------------------------------------
   // Decide, up front, the shape of this person's taste over time.
@@ -80,31 +93,38 @@ export function generateHistory({
     else baseWeights[i] = 0.4
   }
 
+  // Each planted pattern gets its OWN block of artists, with none shared.
+  // An earlier version drew all three from the same pool, so one artist could
+  // be simultaneously abandoned, seasonal and obsessed over — which cancels the
+  // patterns out and makes the planted "fact" impossible to test against.
+  let nextRole = coreCount
+
   // Artists that were heavy early on and then dropped completely.
   const abandonedCutoffDay = Math.floor(totalDays * 0.28)
   const abandonedIdx = []
-  while (abandonedIdx.length < 15) {
-    const i = randInt(rng, coreCount, regularCount - 1)
-    if (!abandonedIdx.includes(i)) abandonedIdx.push(i)
-  }
+  for (let i = 0; i < 15; i++) abandonedIdx.push(nextRole++)
 
   // One artist per season gets a large, temporary boost.
   const seasonLengthDays = 91
   const seasonalPhases = []
   for (let d = 0; d < totalDays; d += seasonLengthDays) {
     seasonalPhases.push({
-      artistIdx: randInt(rng, 0, regularCount - 1),
+      artistIdx: nextRole++,
       startDay: d,
       endDay: Math.min(d + seasonLengthDays, totalDays),
     })
   }
 
   // Short, intense obsessions: two or three weeks of one artist on repeat.
+  // Start days are spread evenly across the timeline rather than picked at
+  // random, so two obsessions can never land back to back and mask each other.
   const bursts = []
-  for (let b = 0; b < 12; b++) {
-    const startDay = randInt(rng, 0, totalDays - 25)
+  const burstCount = 12
+  for (let b = 0; b < burstCount; b++) {
+    const slot = Math.floor((totalDays - 40) * (b / burstCount)) + 10
+    const startDay = slot + randInt(rng, 0, 10)
     bursts.push({
-      artistIdx: randInt(rng, 0, regularCount - 1),
+      artistIdx: nextRole++,
       startDay,
       endDay: startDay + randInt(rng, 14, 21),
     })
@@ -122,8 +142,8 @@ export function generateHistory({
   const dayWeights = new Array(artists.length)
 
   for (let day = 0; day < totalDays; day++) {
-    const dayStart = start + day * DAY_MS
-    const dow = new Date(dayStart).getUTCDay()
+    const dayStart = dayAt(day)
+    const dow = new Date(dayStart).getDay()
 
     // Rebuild today's artist weights from the base plus whatever phases are active.
     for (let i = 0; i < artists.length; i++) dayWeights[i] = baseWeights[i]
@@ -250,7 +270,7 @@ export function generateHistory({
   for (let p = 0; p < podcastCount; p++) {
     const day = randInt(rng, 0, totalDays - 1)
     const show = pick(rng, PODCAST_SHOWS)
-    const cursor = start + day * DAY_MS + randInt(rng, 6, 22) * 3600000
+    const cursor = dayAt(day) + randInt(rng, 6, 22) * 3600000
     entries.push({
       ts: new Date(cursor).toISOString().replace('.000Z', 'Z'),
       platform: pick(rng, PLATFORMS),
@@ -284,7 +304,7 @@ export function generateHistory({
       abandonedIdx,
       seasonalPhases,
       bursts,
-      start,
+      dayAt,
       podcastCount,
       travelStartDay,
       travelEndDay,
@@ -332,13 +352,13 @@ function buildGroundTruth(entries, ctx) {
     abandonedArtists: ctx.abandonedIdx.map((i) => ctx.artists[i].name),
     seasonalArtists: ctx.seasonalPhases.map((p) => ({
       name: ctx.artists[p.artistIdx].name,
-      startTs: new Date(ctx.start + p.startDay * 86400000).toISOString(),
-      endTs: new Date(ctx.start + p.endDay * 86400000).toISOString(),
+      startTs: new Date(ctx.dayAt(p.startDay)).toISOString(),
+      endTs: new Date(ctx.dayAt(p.endDay)).toISOString(),
     })),
     burstArtists: ctx.bursts.map((b) => ({
       name: ctx.artists[b.artistIdx].name,
-      startTs: new Date(ctx.start + b.startDay * 86400000).toISOString(),
-      endTs: new Date(ctx.start + b.endDay * 86400000).toISOString(),
+      startTs: new Date(ctx.dayAt(b.startDay)).toISOString(),
+      endTs: new Date(ctx.dayAt(b.endDay)).toISOString(),
     })),
     travelCountry: 'JP',
   }

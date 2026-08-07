@@ -4,6 +4,22 @@
 // toggle rather than a refactor: both sides expose the exact same functions and
 // return the exact same object shapes.
 //
+// FEBRUARY 2026 DEVELOPER MODE RESTRICTIONS
+// Spotify cut Development Mode down to a smaller set of endpoints. This mock
+// deliberately mirrors those limits rather than the older, wider API, because a
+// mock that offers more than reality is worse than no mock at all.
+//
+// Gone, and therefore not implemented here:
+//   GET /artists, GET /albums, GET /tracks  — bulk metadata lookup by id
+//   popularity (track, artist, album), followers (artist), available_markets
+//
+// Search survives but is capped at 10 results, down from 50.
+//
+// The practical consequence: artwork and genres can only be harvested from
+// responses we already receive — top artists, top tracks, saved items,
+// playlists — rather than looked up on demand. Anything in the lifetime export
+// that never appears in one of those falls back to a generated colour block.
+//
 // Note there are no image URLs here. Real Spotify responses include artwork
 // links, but those require the network — so mock artwork is left empty and the
 // UI falls back to a colour block generated from the name. That fallback is
@@ -57,7 +73,7 @@ export function createMockApi({ catalogue, plays, now, seed = 77 }) {
       uri: track.uri,
       name: track.name,
       duration_ms: track.durationMs,
-      popularity: track.popularity,
+      // No `popularity` — removed from track objects in February 2026.
       explicit: track.explicit,
       track_number: track.trackNumber,
       artists: [{ id: artist ? artist.id : 'unknown', name: track.artistName, uri: `spotify:artist:${artist ? artist.id : 'unknown'}` }],
@@ -82,9 +98,9 @@ export function createMockApi({ catalogue, plays, now, seed = 77 }) {
       id: artist.id,
       uri: `spotify:artist:${artist.id}`,
       name: artist.name,
+      // Genres survived the cull, which matters — they are the only source of
+      // genre data the app has. `popularity` and `followers` did not.
       genres: artist.genres,
-      popularity: artist.popularity,
-      followers: { total: Math.round(artist.popularity * 1000 + 500) },
       images: [],
     }
   }
@@ -212,19 +228,15 @@ export function createMockApi({ catalogue, plays, now, seed = 77 }) {
       return { artists: { items, total: items.length } }
     },
 
-    async getArtists(ids) {
-      const byId = new Map(catalogue.artists.map((a) => [a.id, a]))
-      return { artists: ids.map((id) => (byId.has(id) ? artistObject(byId.get(id)) : null)).filter(Boolean) }
-    },
-
-    async getArtistsByName(names) {
-      return { artists: names.map((n) => artistsByName.get(n)).filter(Boolean).map(artistObject) }
-    },
-
-    async getTracks(uris) {
-      return {
-        tracks: uris.map((u) => catalogue.tracksByUri.get(u)).filter(Boolean).map(trackObject),
-      }
+    // Bulk metadata lookup (GET /artists, /albums, /tracks) no longer exists in
+    // Development Mode. Search is the only way to resolve an artist we have a
+    // name for but no metadata on — and it now returns at most 10 results, so
+    // it is a slow trickle rather than a way to backfill thousands of artists.
+    async searchArtists(query, limit = 10) {
+      const capped = Math.min(limit, 10)
+      const needle = query.toLowerCase()
+      const hits = catalogue.artists.filter((a) => a.name.toLowerCase().includes(needle)).slice(0, capped)
+      return { artists: { items: hits.map(artistObject), limit: capped } }
     },
   }
 

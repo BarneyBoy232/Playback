@@ -44,7 +44,9 @@ export function resolveWindow(presetId, { now, dataRange = null, customFrom = nu
     from = dataRange ? dataRange.from : now - 365 * DAY_MS
     to = dataRange ? dataRange.to + 1 : now
   } else if (preset.id === 'year') {
-    from = Date.UTC(new Date(now).getUTCFullYear(), 0, 1)
+    // Local 1 January, for the same reason bucketing is local: "this year"
+    // means the listener's year, not UTC's.
+    from = new Date(new Date(now).getFullYear(), 0, 1).getTime()
   } else if (preset.id === 'custom') {
     from = customFrom != null ? customFrom : now - 30 * DAY_MS
     to = customTo != null ? customTo : now
@@ -117,26 +119,33 @@ function buildBuckets(from, to, bucket) {
   return out
 }
 
-// All bucketing is done in UTC so boundaries never shift with daylight saving.
+// Bucketing uses LOCAL time, not UTC.
+//
+// A play is stored as a UTC instant, but "which day did I listen to this" only
+// means anything on the listener's own clock. In Australia, 8am local is 10pm
+// the previous day in UTC — bucketing by UTC would file every morning commute
+// under yesterday and make the whole habits section wrong.
+//
+// Boundaries are built by constructing local dates rather than adding fixed
+// millisecond offsets, so daylight saving transitions cannot drift them.
 function bucketStart(ts, bucket) {
   const d = new Date(ts)
-  if (bucket === 'hour') return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), d.getUTCHours())
-  if (bucket === 'day') return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+  if (bucket === 'hour') return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours()).getTime()
+  if (bucket === 'day') return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
   if (bucket === 'week') {
-    const day = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
-    // Weeks start Monday.
-    const offset = (new Date(day).getUTCDay() + 6) % 7
-    return day - offset * DAY_MS
+    // Weeks start Monday. getDay() is Sunday-first, so shift it.
+    const offset = (d.getDay() + 6) % 7
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate() - offset).getTime()
   }
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)
+  return new Date(d.getFullYear(), d.getMonth(), 1).getTime()
 }
 
 function nextBucket(ts, bucket) {
-  if (bucket === 'hour') return ts + 3600000
-  if (bucket === 'day') return ts + DAY_MS
-  if (bucket === 'week') return ts + 7 * DAY_MS
   const d = new Date(ts)
-  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)
+  if (bucket === 'hour') return new Date(d.getFullYear(), d.getMonth(), d.getDate(), d.getHours() + 1).getTime()
+  if (bucket === 'day') return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime()
+  if (bucket === 'week') return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7).getTime()
+  return new Date(d.getFullYear(), d.getMonth() + 1, 1).getTime()
 }
 
 function bucketKey(ts, bucket) {

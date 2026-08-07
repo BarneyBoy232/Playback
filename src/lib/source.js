@@ -20,6 +20,11 @@ const SOURCE_KEY = 'dataSource'
 // generateHistory() derives its catalogue seed from this same number.
 export const MOCK_SEED = 20260806
 
+// Bump this whenever the generator changes in a way that alters the data it
+// produces. Stored demo data tagged with an older version is thrown away and
+// rebuilt, so a stale database can never quietly disagree with the code.
+export const MOCK_VERSION = 2
+
 // Kept in memory so the mock catalogue is only generated once per page load.
 let mockBundle = null
 
@@ -42,8 +47,9 @@ export async function ensureMockData({ force = false, onProgress = () => {} } = 
   // interrupted halfway leaves rows behind but not a usable dataset. The
   // completion flag is only written once the whole load has finished.
   const complete = await getMeta('mockComplete', false)
+  const version = await getMeta('mockVersion', 0)
   const existing = await countPlays()
-  if (complete && existing > 0 && !force) {
+  if (complete && version === MOCK_VERSION && existing > 0 && !force) {
     onProgress('Demo data already loaded')
     return { skipped: true, plays: existing, groundTruth: await getMeta('mockGroundTruth') }
   }
@@ -66,6 +72,7 @@ export async function ensureMockData({ force = false, onProgress = () => {} } = 
   await setMeta(SOURCE_KEY, SOURCE_MOCK)
   await setMeta('mockGroundTruth', groundTruth)
   await setMeta('lastImport', { at: Date.now(), added, stats, elapsedMs: Math.round(performance.now() - t0) })
+  await setMeta('mockVersion', MOCK_VERSION)
   // Written last, on purpose: it is what marks the dataset as usable.
   await setMeta('mockComplete', true)
 
