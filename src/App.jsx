@@ -15,6 +15,7 @@ import { resolveWindow, filterPlays, bucketPlays, DEFAULT_PRESET } from './lib/s
 import Wordmark from './components/Wordmark.jsx'
 import TimeWindowBar from './components/TimeWindowBar.jsx'
 import SpotifyPanel from './components/SpotifyPanel.jsx'
+import ImportPanel from './components/ImportPanel.jsx'
 
 export default function App() {
   const [status, setStatus] = useState('Starting up')
@@ -208,7 +209,8 @@ export default function App() {
         </section>
       )}
 
-      <section style={{ marginTop: '3rem' }}>
+      <section style={{ marginTop: '3rem', display: 'grid', gap: '0.75rem' }}>
+        <ImportPanel onImported={() => refresh()} />
         <SpotifyPanel connected={connected} profile={profile} source={source} onChanged={() => refresh()} />
       </section>
 

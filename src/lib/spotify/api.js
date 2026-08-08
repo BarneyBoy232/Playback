@@ -43,8 +43,13 @@ export function createSpotifyApi() {
     }
 
     if (response.status === 403) {
+      // Overwhelmingly the cause in Development Mode, and the fix is specific
+      // enough to be worth spelling out rather than leaving as a status code.
       throw new Error(
-        'Spotify returned 403. In Development Mode this usually means the account is not on the app\'s authorised user list.',
+        'Spotify refused access (403). This account has not been added to the app yet. ' +
+          'The app owner needs to open developer.spotify.com/dashboard, select the app, ' +
+          'go to Settings then User Management, and add this account\'s name and the email ' +
+          'address its Spotify account uses. Up to five accounts are allowed.',
       )
     }
 
