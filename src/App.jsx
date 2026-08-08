@@ -1,5 +1,13 @@
 import { useEffect, useState, useRef, useMemo } from 'react'
-import { ensureMockData, getApi, getGroundTruth, getDataSource, activateSpotify, SOURCE_MOCK } from './lib/source.js'
+import {
+  ensureMockData,
+  getApi,
+  getGroundTruth,
+  getDataSource,
+  activateSpotify,
+  resetToEmpty,
+  SOURCE_MOCK,
+} from './lib/source.js'
 import { getAllPlays, getPlayRange, getMeta } from './lib/db.js'
 import { completeLogin, isConnected } from './lib/spotify/auth.js'
 import { fullSync } from './lib/spotify/sync.js'
@@ -69,6 +77,20 @@ export default function App() {
     setReady(false)
     try {
       await ensureMockData({ force: true, onProgress: setStatus })
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setReady(true)
+    }
+  }
+
+  /** Throw the demo data away and go back to an empty app. */
+  async function clearDemo() {
+    setReady(false)
+    setStatus('Clearing demo data')
+    try {
+      await resetToEmpty()
       await refresh()
     } catch (err) {
       setError(err.message)
@@ -147,6 +169,19 @@ export default function App() {
 
       {view && <TimeWindowBar value={preset} onChange={setPreset} range={{ from: win.from, to: win.to }} />}
 
+      {/* Demo data loaded before this change stays in the browser until it is
+          cleared. Without a marker those invented numbers read exactly like a
+          real listening record, which is the whole thing worth avoiding. */}
+      {truth && (
+        <div style={demoBanner}>
+          <strong style={{ fontWeight: 700 }}>Demo data.</strong> These numbers are invented, not a
+          real listening record.
+          <button style={{ padding: '0.35rem 0.9rem', fontSize: '0.78rem' }} onClick={clearDemo}>
+            Clear
+          </button>
+        </div>
+      )}
+
       {view ? (
         <section style={{ marginTop: '2.5rem' }}>
           <div className="eyebrow">{win.label}</div>
@@ -213,7 +248,7 @@ export default function App() {
             </>
           )}
 
-          {!connected && (
+          {!connected && !truth && (
             <>
               <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: 1.5, marginTop: '1.75rem', maxWidth: '60ch' }}>
                 Demo data is four years of invented listening, generated in your browser. Useful for
@@ -325,6 +360,22 @@ const grid = {
   gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
   gap: '0.75rem',
   marginTop: '0.75rem',
+}
+
+// Outlined rather than filled: it has to be impossible to miss without
+// becoming the loudest thing on a page whose whole design is restraint.
+const demoBanner = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.9rem',
+  flexWrap: 'wrap',
+  marginTop: '1.5rem',
+  padding: '0.75rem 1rem',
+  border: '1px solid var(--line-strong)',
+  borderRadius: 'var(--radius)',
+  color: 'var(--text-dim)',
+  fontSize: '0.85rem',
+  lineHeight: 1.5,
 }
 
 const details = {
