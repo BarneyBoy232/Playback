@@ -148,8 +148,16 @@ export async function activateSpotify() {
   mockBundle = null
 }
 
-/** Go back to demo data, discarding anything pulled from Spotify. */
-export async function returnToDemo({ onProgress = () => {} } = {}) {
+/**
+ * Wipe everything and return to an empty app.
+ *
+ * Used when disconnecting an account. It deliberately does NOT fall back to
+ * demo data — an app that quietly refills itself with invented plays after you
+ * disconnect would be alarming, and worse, indistinguishable from real data at
+ * a glance.
+ */
+export async function resetToEmpty() {
   mockBundle = null
-  return ensureMockData({ force: true, onProgress })
+  await clearAll()
+  await setMeta(SOURCE_KEY, SOURCE_MOCK)
 }

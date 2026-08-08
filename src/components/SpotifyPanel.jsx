@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { beginLogin, logout } from '../lib/spotify/auth.js'
-import { getApi, returnToDemo } from '../lib/source.js'
+import { getApi, resetToEmpty } from '../lib/source.js'
 import { fullSync, syncRecentPlays } from '../lib/spotify/sync.js'
 
 // Connecting, syncing and disconnecting a real Spotify account.
@@ -42,7 +42,7 @@ export default function SpotifyPanel({ connected, profile, source, onChanged }) 
     setBusy('Disconnecting')
     try {
       await logout()
-      await returnToDemo({ onProgress: setBusy })
+      await resetToEmpty()
       await onChanged()
     } catch (err) {
       setError(err.message)
@@ -53,16 +53,16 @@ export default function SpotifyPanel({ connected, profile, source, onChanged }) 
 
   return (
     <div style={box}>
-      <div className="eyebrow">{connected ? 'Connected' : 'Data source'}</div>
+      <div className="eyebrow">{connected ? 'Connected' : 'Not connected'}</div>
 
       <div style={{ marginTop: '0.5rem', fontSize: '1.05rem', fontWeight: 600 }}>
-        {connected ? profile?.displayName || 'Spotify account' : 'Demo data'}
+        {connected ? profile?.displayName || 'Spotify account' : 'No account linked'}
       </div>
 
       <p style={note}>
         {connected
-          ? 'Live plays are limited to the last 50 tracks and carry no skip or device detail. The lifetime export remains the accurate record.'
-          : 'Everything on screen is invented. Connect an account, or import a lifetime export, to see real listening.'}
+          ? 'Live plays are limited to the last 50 tracks and carry no skip or device detail. A lifetime export remains the accurate record.'
+          : 'Link a Spotify account to start collecting plays.'}
       </p>
 
       {error && <p style={{ ...note, color: 'var(--white)' }}>{error}</p>}

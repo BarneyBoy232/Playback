@@ -8,10 +8,6 @@ import Wordmark from './components/Wordmark.jsx'
 import TimeWindowBar from './components/TimeWindowBar.jsx'
 import SpotifyPanel from './components/SpotifyPanel.jsx'
 
-// Guards against React's development-mode double-effect firing two generations
-// at once on first load.
-let bootstrapPromise = null
-
 export default function App() {
   const [status, setStatus] = useState('Starting up')
   const [ready, setReady] = useState(false)
@@ -33,7 +29,11 @@ export default function App() {
     boot()
   }, [])
 
-  async function boot(force = false) {
+  // The app starts empty. Nothing is invented on first load — an app that
+  // greets you with 66,000 fabricated plays is indistinguishable from one
+  // showing your real listening, which is a bad way to meet a data tool.
+  // Demo data is available on request, from the panel at the bottom.
+  async function boot() {
     setReady(false)
     setError(null)
     try {
@@ -55,20 +55,25 @@ export default function App() {
         window.history.replaceState({}, '', import.meta.env.BASE_URL)
       }
 
-      const currentSource = await getDataSource()
-      if (currentSource === SOURCE_MOCK) {
-        if (!bootstrapPromise || force) {
-          bootstrapPromise = ensureMockData({ force, onProgress: setStatus })
-        }
-        await bootstrapPromise
-      }
-
-      setStatus('Reading it back')
-      await refresh(currentSource)
+      setStatus('Loading your listening')
+      await refresh()
       setReady(true)
     } catch (err) {
       console.error(err)
       setError(err.message)
+    }
+  }
+
+  /** Fill the app with generated demo data, on explicit request only. */
+  async function loadDemo() {
+    setReady(false)
+    try {
+      await ensureMockData({ force: true, onProgress: setStatus })
+      await refresh()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setReady(true)
     }
   }
 
@@ -140,7 +145,7 @@ export default function App() {
         <Wordmark size="md" />
       </header>
 
-      <TimeWindowBar value={preset} onChange={setPreset} range={{ from: win.from, to: win.to }} />
+      {view && <TimeWindowBar value={preset} onChange={setPreset} range={{ from: win.from, to: win.to }} />}
 
       {view ? (
         <section style={{ marginTop: '2.5rem' }}>
@@ -156,10 +161,14 @@ export default function App() {
           <Sparkline series={view.series} label={win.label} />
         </section>
       ) : (
-        <section style={{ marginTop: '2.5rem' }}>
-          <h1 style={{ fontSize: 'clamp(1.8rem, 5vw, 3rem)' }}>Nothing to show yet</h1>
-          <p style={{ color: 'var(--text-dim)', maxWidth: '56ch', lineHeight: 1.55 }}>
-            Sync recent plays, or import a lifetime streaming history export, and this fills in.
+        <section style={{ marginTop: '1rem', borderTop: '1px solid var(--line)', paddingTop: '2.5rem' }}>
+          <h1 style={{ fontSize: 'clamp(2rem, 6vw, 3.6rem)', maxWidth: '18ch' }}>
+            {connected ? 'No plays collected yet' : 'Nothing here yet'}
+          </h1>
+          <p style={{ color: 'var(--text-dim)', maxWidth: '54ch', lineHeight: 1.6, marginTop: '1rem' }}>
+            {connected
+              ? 'Sync recent plays below to start collecting. Spotify only hands over the last 50 at a time, so a lifetime export is still the way to get real history.'
+              : 'Link a Spotify account below and Playback starts building a record of everything you listen to. A lifetime streaming export can be imported on top of it for the years that came before.'}
           </p>
         </section>
       )}
@@ -174,7 +183,10 @@ export default function App() {
         <div style={{ padding: '0.25rem 0 1rem' }}>
           <div className="eyebrow" style={{ marginTop: '1.25rem' }}>Dataset</div>
           <div style={grid}>
-            <Stat label="Source" value={source === SOURCE_MOCK ? 'Demo data' : 'Spotify account'} />
+            <Stat
+              label="Source"
+              value={connected ? 'Spotify account' : truth ? 'Demo data' : 'Empty'}
+            />
             <Stat label="Plays stored" value={plays.length.toLocaleString()} />
             <Stat
               label="Date range"
@@ -201,10 +213,17 @@ export default function App() {
             </>
           )}
 
-          {source === SOURCE_MOCK && (
-            <button style={{ marginTop: '1.5rem' }} onClick={() => boot(true)}>
-              Regenerate demo data
-            </button>
+          {!connected && (
+            <>
+              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', lineHeight: 1.5, marginTop: '1.75rem', maxWidth: '60ch' }}>
+                Demo data is four years of invented listening, generated in your browser. Useful for
+                seeing what the app does before connecting anything real. Loading it replaces
+                whatever is stored.
+              </p>
+              <button style={{ marginTop: '0.75rem' }} onClick={loadDemo}>
+                Load demo data
+              </button>
+            </>
           )}
         </div>
       </details>
