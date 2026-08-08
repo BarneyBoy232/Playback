@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+
+  "//buildCommand": "Tests run before the build, so a failing test fails the deploy instead of publishing broken code.",
+  "buildCommand": "npm test && npm run build",
+  "outputDirectory": "dist",
+
+  "//rewrites": "Single-page app: every address serves the same file, and the app decides what to show. Real files in dist are still served first, so assets are unaffected.",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
