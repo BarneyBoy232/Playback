@@ -16,6 +16,7 @@ import Wordmark from './components/Wordmark.jsx'
 import TimeWindowBar from './components/TimeWindowBar.jsx'
 import SpotifyPanel from './components/SpotifyPanel.jsx'
 import ImportPanel from './components/ImportPanel.jsx'
+import GetStarted from './components/GetStarted.jsx'
 
 export default function App() {
   const [status, setStatus] = useState('Starting up')
@@ -197,16 +198,7 @@ export default function App() {
           <Sparkline series={view.series} label={win.label} />
         </section>
       ) : (
-        <section style={{ marginTop: '1rem', borderTop: '1px solid var(--line)', paddingTop: '2.5rem' }}>
-          <h1 style={{ fontSize: 'clamp(2rem, 6vw, 3.6rem)', maxWidth: '18ch' }}>
-            {connected ? 'No plays collected yet' : 'Nothing here yet'}
-          </h1>
-          <p style={{ color: 'var(--text-dim)', maxWidth: '54ch', lineHeight: 1.6, marginTop: '1rem' }}>
-            {connected
-              ? 'Sync recent plays below to start collecting. Spotify only hands over the last 50 at a time, so a lifetime export is still the way to get real history.'
-              : 'Link a Spotify account below and Playback starts building a record of everything you listen to. A lifetime streaming export can be imported on top of it for the years that came before.'}
-          </p>
-        </section>
+        <GetStarted />
       )}
 
       <section style={{ marginTop: '3rem', display: 'grid', gap: '0.75rem' }}>

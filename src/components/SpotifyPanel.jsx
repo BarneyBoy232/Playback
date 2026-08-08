@@ -53,16 +53,16 @@ export default function SpotifyPanel({ connected, profile, source, onChanged }) 
 
   return (
     <div style={box}>
-      <div className="eyebrow">{connected ? 'Connected' : 'Not connected'}</div>
+      <div className="eyebrow">{connected ? 'Connected' : 'Optional · invite only'}</div>
 
       <div style={{ marginTop: '0.5rem', fontSize: '1.05rem', fontWeight: 600 }}>
-        {connected ? profile?.displayName || 'Spotify account' : 'No account linked'}
+        {connected ? profile?.displayName || 'Spotify account' : 'Live sync'}
       </div>
 
       <p style={note}>
         {connected
           ? 'Live plays are limited to the last 50 tracks and carry no skip or device detail. A lifetime export remains the accurate record.'
-          : 'Link a Spotify account to start collecting plays.'}
+          : 'Keeps your history topped up between exports, but Spotify only lets apps like this one connect five hand-invited accounts — so this will refuse you unless you have been added. Importing an export has no such limit and gives far more detail.'}
       </p>
 
       {error && <p style={{ ...note, color: 'var(--white)' }}>{error}</p>}
